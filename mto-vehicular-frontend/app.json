@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Turesma - Control Vehicular",
+    "slug": "mto-vehicular-frontend",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.rexxc.mtovehicularfrontend",
+      "usesCleartextTraffic": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [],
+    "extra": {
+      "eas": {
+        "projectId": "928a25d2-2b5a-4e8c-9442-15f4cfca669d"
+      }
+    },
+    "owner": "rexxc"
+  }
+}
