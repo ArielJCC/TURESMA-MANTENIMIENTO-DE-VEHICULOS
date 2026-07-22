@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, Text, View, ActivityIndicator, ScrollView, RefreshControl, useWindowDimensions, Platform, TouchableOpacity, Image, Linking } from 'react-native';
+import { StyleSheet, Text, View, ActivityIndicator, ScrollView, RefreshControl, useWindowDimensions, Platform, TouchableOpacity, Image, Linking, Modal, Pressable, TextInput, Alert } from 'react-native';
 import api from '../services/api';
 import AppLayout from '../components/AppLayout';
 
@@ -11,14 +11,100 @@ export default function DashboardScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [calendarTarget, setCalendarTarget] = useState('start');
+
+  const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const weekDays = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
+
+  const getDaysGrid = () => {
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    const firstDayIndex = new Date(year, month, 1).getDay();
+
+    const grid = [];
+    for (let i = 0; i < firstDayIndex; i++) {
+      grid.push(null);
+    }
+    for (let day = 1; day <= totalDays; day++) {
+      grid.push(day);
+    }
+    return grid;
+  };
+
+  const handleSelectDay = (day) => {
+    if (!day) return;
+    const year = calendarDate.getFullYear();
+    const month = String(calendarDate.getMonth() + 1).padStart(2, '0');
+    const dayStr = String(day).padStart(2, '0');
+    const selectedDate = `${year}-${month}-${dayStr}`;
+    
+    if (calendarTarget === 'start') {
+      setFilterStartDate(selectedDate);
+    } else {
+      setFilterEndDate(selectedDate);
+    }
+    setShowCalendar(false);
+  };
+
+  const changeMonth = (offset) => {
+    setCalendarDate(prev => {
+      const next = new Date(prev);
+      next.setMonth(next.getMonth() + offset);
+      return next;
+    });
+  };
+
+  const getTodayString = () => {
+    const today = new Date();
+    const day = today.getDate();
+    const month = months[today.getMonth()];
+    const year = today.getFullYear();
+    return `Hoy: ${day} de ${month} de ${year}`;
+  };
+
   const handleDownloadReport = () => {
+    setFilterStartDate('');
+    setFilterEndDate('');
+    setShowCalendar(false);
+    setFilterModalVisible(true);
+  };
+
+  const confirmDownloadReport = () => {
     const baseURL = api.defaults.baseURL;
-    const reportURL = `${baseURL}/dashboard/report`;
+    let reportURL = `${baseURL}/dashboard/report`;
+    
+    const params = [];
+    const startStr = filterStartDate ? filterStartDate.trim() : '';
+    const endStr = filterEndDate ? filterEndDate.trim() : '';
+
+    if (startStr && !/^\d{4}-\d{2}-\d{2}$/.test(startStr)) {
+      Alert.alert('Fecha Inválida', 'Por favor, ingresa la fecha de inicio en formato AAAA-MM-DD.');
+      return;
+    }
+    if (endStr && !/^\d{4}-\d{2}-\d{2}$/.test(endStr)) {
+      Alert.alert('Fecha Inválida', 'Por favor, ingresa la fecha de fin en formato AAAA-MM-DD.');
+      return;
+    }
+
+    if (startStr) params.push(`start_date=${startStr}`);
+    if (endStr) params.push(`end_date=${endStr}`);
+    
+    if (params.length > 0) {
+      reportURL += `?${params.join('&')}`;
+    }
+
     if (Platform.OS === 'web') {
       window.open(reportURL, '_blank');
     } else {
       Linking.openURL(reportURL);
     }
+    setFilterModalVisible(false);
   };
 
   const fetchData = useCallback((isRefresh = false) => {
@@ -188,6 +274,134 @@ export default function DashboardScreen({ navigation }) {
           )}
         </ScrollView>
       </View>
+      <Modal
+        visible={filterModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setFilterModalVisible(false)}>
+          <Pressable style={[styles.sheetContainer, { paddingBottom: 30 }]} onPress={() => {}}>
+            <View style={styles.sheetHandle} />
+            <View>
+              <Text style={styles.sheetTitle}>Filtrar Reporte PDF General</Text>
+              <Text style={styles.sheetSubtitle}>Selecciona un rango de fechas para filtrar los gastos e historial, o déjalo en blanco para descargar todo.</Text>
+              
+              <TouchableOpacity style={{ alignSelf: 'flex-end', marginBottom: 15 }} onPress={() => { setFilterStartDate(''); setFilterEndDate(''); }}>
+                <Text style={{ color: '#e52320', fontWeight: 'bold', fontSize: 13 }}>Limpiar Fechas</Text>
+              </TouchableOpacity>
+
+              <View style={{ marginBottom: 15 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginBottom: 6 }}>Fecha de Inicio</Text>
+                <TouchableOpacity activeOpacity={0.8} onPress={() => { setCalendarTarget('start'); setCalendarDate(new Date()); setShowCalendar(true); }}>
+                  <View pointerEvents="none">
+                    <TextInput
+                      style={{ height: 44, borderColor: '#cbd5e1', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: '#0f172a', backgroundColor: '#f8fafc' }}
+                      value={filterStartDate}
+                      placeholder="Seleccionar fecha..."
+                      placeholderTextColor="#94a3b8"
+                      editable={false}
+                    />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ marginBottom: 20 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginBottom: 6 }}>Fecha de Fin</Text>
+                <TouchableOpacity activeOpacity={0.8} onPress={() => { setCalendarTarget('end'); setCalendarDate(new Date()); setShowCalendar(true); }}>
+                  <View pointerEvents="none">
+                    <TextInput
+                      style={{ height: 44, borderColor: '#cbd5e1', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: '#0f172a', backgroundColor: '#f8fafc' }}
+                      value={filterEndDate}
+                      placeholder="Seleccionar fecha..."
+                      placeholderTextColor="#94a3b8"
+                      editable={false}
+                    />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={styles.redActionBtn} onPress={confirmDownloadReport}>
+                <Text style={styles.redActionBtnText}>Generar Reporte PDF</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.sheetCancel, { marginTop: 10 }]} onPress={() => setFilterModalVisible(false)}>
+                <Text style={styles.sheetCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showCalendar}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCalendar(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowCalendar(false)}>
+          <Pressable style={styles.calendarContainer} onPress={() => {}}>
+            <View style={styles.calendarHeader}>
+              <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.navBtn}>
+                <Text style={styles.navBtnText}>◀</Text>
+              </TouchableOpacity>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.calendarTitle}>
+                  {months[calendarDate.getMonth()]} {calendarDate.getFullYear()}
+                </Text>
+                <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2, fontWeight: '600' }}>
+                  {getTodayString()}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => changeMonth(1)} style={styles.navBtn}>
+                <Text style={styles.navBtnText}>▶</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.weekRow}>
+              {weekDays.map(d => (
+                <Text key={d} style={styles.weekDayText}>{d}</Text>
+              ))}
+            </View>
+
+            <View style={styles.daysGrid}>
+              {getDaysGrid().map((day, idx) => {
+                const currentSelected = calendarTarget === 'start' ? filterStartDate : filterEndDate;
+                const isSelected = day && currentSelected === `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const today = new Date();
+                const isToday = day && 
+                                today.getDate() === day && 
+                                today.getMonth() === calendarDate.getMonth() && 
+                                today.getFullYear() === calendarDate.getFullYear();
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[
+                      styles.dayCell,
+                      isSelected && styles.selectedDayCell,
+                      isToday && !isSelected && { borderWidth: 1.5, borderColor: '#e52320', borderStyle: 'dashed' }
+                    ]}
+                    onPress={() => handleSelectDay(day)}
+                    disabled={!day}
+                  >
+                    <Text style={[
+                      styles.dayText,
+                      !day && styles.emptyDayText,
+                      isSelected && styles.selectedDayText
+                    ]}>
+                      {day || ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity style={styles.closeCalBtn} onPress={() => setShowCalendar(false)}>
+              <Text style={styles.closeCalBtnText}>Cerrar</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </AppLayout>
   );
 }
@@ -259,5 +473,30 @@ const styles = StyleSheet.create({
   noAlertsIcon: { fontSize: 32, marginBottom: 8 },
   noAlertsText: { color: '#475569', fontSize: 14, fontWeight: '600', textAlign: 'center' },
   downloadReportBtn: { backgroundColor: '#e52320', paddingVertical: 8, paddingHorizontal: 15, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: '#e52320' },
-  downloadReportBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 }
+  downloadReportBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.45)', justifyContent: 'flex-end' },
+  sheetContainer: { backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24, elevation: 18 },
+  sheetHandle: { alignSelf: 'center', width: 46, height: 5, borderRadius: 999, backgroundColor: '#cbd5e1', marginBottom: 16 },
+  sheetTitle: { fontSize: 17, fontWeight: '800', color: '#0f172a' },
+  sheetSubtitle: { marginTop: 4, marginBottom: 18, fontSize: 13, color: '#64748b' },
+  redActionBtn: { backgroundColor: '#e52320', paddingVertical: 12, paddingHorizontal: 15, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  redActionBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
+  sheetCancel: { minHeight: 52, borderRadius: 14, backgroundColor: '#f8fafc', justifyContent: 'center', alignItems: 'center' },
+  sheetCancelText: { fontSize: 15, fontWeight: '800', color: '#475569' },
+  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  navBtn: { padding: 10 },
+  navBtnText: { fontSize: 16, color: '#334155', fontWeight: 'bold' },
+  calendarTitle: { fontSize: 16, fontWeight: '800', color: '#1e293b' },
+  weekRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 8 },
+  weekDayText: { width: 36, textAlign: 'center', fontWeight: '700', color: '#94a3b8', fontSize: 12 },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
+  dayCell: { width: 42, height: 40, justifyContent: 'center', alignItems: 'center', marginVertical: 2, borderRadius: 8 },
+  selectedDayCell: { backgroundColor: '#e52320' },
+  dayText: { fontSize: 14, fontWeight: '600', color: '#334155' },
+  emptyDayText: { color: 'transparent' },
+  selectedDayText: { color: '#ffffff', fontWeight: '800' },
+  closeCalBtn: { marginTop: 15, backgroundColor: '#f1f5f9', height: 44, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  closeCalBtnText: { color: '#475569', fontSize: 14, fontWeight: '700' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  calendarContainer: { backgroundColor: '#ffffff', width: '100%', maxWidth: 340, borderRadius: 16, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 5 }
 });

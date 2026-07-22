@@ -23,18 +23,6 @@ Artisan::command('reminders:send', function () {
         $vehicle = $reminder->vehicle;
         if (!$vehicle) continue;
 
-        // Validar límite por kilometraje
-        $mileageLimitReached = false;
-        $mileageNearLimit = false;
-        if ($reminder->target_mileage) {
-            $diffMileage = $reminder->target_mileage - $vehicle->current_mileage;
-            if ($diffMileage <= 0) {
-                $mileageLimitReached = true;
-            } elseif ($diffMileage <= 1000) {
-                $mileageNearLimit = true;
-            }
-        }
-
         // Validar límite por fecha
         $dateLimitPassed = false;
         $dateNearLimit = false;
@@ -47,10 +35,10 @@ Artisan::command('reminders:send', function () {
             }
         }
 
-        if ($mileageLimitReached || $dateLimitPassed) {
+        if ($dateLimitPassed) {
             $criticalCount++;
             $details[] = "🚨 {$vehicle->plate} - {$reminder->title} (CRÍTICO)";
-        } elseif ($mileageNearLimit || $dateNearLimit) {
+        } elseif ($dateNearLimit) {
             $upcomingCount++;
             $details[] = "⚠️ {$vehicle->plate} - {$reminder->title} (PRÓXIMO)";
         }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ActivityIndicator, ScrollView, TouchableOpacity, Image, Platform, useWindowDimensions, Modal, Pressable, Linking } from 'react-native';
+import { StyleSheet, Text, View, ActivityIndicator, ScrollView, TouchableOpacity, Image, Platform, useWindowDimensions, Modal, Pressable, Linking, TextInput } from 'react-native';
 import api from '../services/api';
 import FloatingDialog from '../components/FloatingDialog';
 import AppLayout from '../components/AppLayout';
@@ -13,6 +13,12 @@ export default function VehicleHistoryScreen({ route, navigation }) {
   const [selectedMaintenance, setSelectedMaintenance] = useState(null);
   const [dialog, setDialog] = useState({ visible: false, type: 'info', title: '', message: '', confirmText: 'Aceptar', cancelText: 'Cancelar', onConfirm: null, onCancel: null, autoDismissMs: null });
   const [vehicleImageRatio, setVehicleImageRatio] = useState(16 / 9);
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [calendarTarget, setCalendarTarget] = useState('start');
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const getMaintenanceTypeLabel = (type) => {
@@ -128,14 +134,121 @@ export default function VehicleHistoryScreen({ route, navigation }) {
     setSelectedMaintenance(item);
   };
 
+  const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const weekDays = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
+
+  const getDaysGrid = () => {
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    const firstDayIndex = new Date(year, month, 1).getDay();
+
+    const grid = [];
+    for (let i = 0; i < firstDayIndex; i++) {
+      grid.push(null);
+    }
+    for (let day = 1; day <= totalDays; day++) {
+      grid.push(day);
+    }
+    return grid;
+  };
+
+  const handleSelectDay = (day) => {
+    if (!day) return;
+    const year = calendarDate.getFullYear();
+    const month = String(calendarDate.getMonth() + 1).padStart(2, '0');
+    const dayStr = String(day).padStart(2, '0');
+    const selectedDate = `${year}-${month}-${dayStr}`;
+    
+    if (calendarTarget === 'start') {
+      setFilterStartDate(selectedDate);
+    } else {
+      setFilterEndDate(selectedDate);
+    }
+    setShowCalendar(false);
+  };
+
+  const changeMonth = (offset) => {
+    setCalendarDate(prev => {
+      const next = new Date(prev);
+      next.setMonth(next.getMonth() + offset);
+      return next;
+    });
+  };
+
+  const getTodayString = () => {
+    const today = new Date();
+    const day = today.getDate();
+    const month = months[today.getMonth()];
+    const year = today.getFullYear();
+    return `Hoy: ${day} de ${month} de ${year}`;
+  };
+
+  const formatRegisterDate = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    } catch (e) {
+      return '';
+    }
+  };
+
   const handleDownloadVehicleReport = () => {
+    setFilterStartDate('');
+    setFilterEndDate('');
+    setShowCalendar(false);
+    setFilterModalVisible(true);
+  };
+
+  const confirmDownloadVehicleReport = () => {
     const baseURL = api.defaults.baseURL;
-    const reportURL = `${baseURL}/vehicles/${vehicleId}/report`;
+    let reportURL = `${baseURL}/vehicles/${vehicleId}/report`;
+    
+    const params = [];
+    const startStr = filterStartDate ? filterStartDate.trim() : '';
+    const endStr = filterEndDate ? filterEndDate.trim() : '';
+
+    if (startStr && !/^\d{4}-\d{2}-\d{2}$/.test(startStr)) {
+      setDialog({
+        visible: true,
+        type: 'warning',
+        title: 'Fecha Inválida',
+        message: 'Por favor, ingresa la fecha de inicio en formato AAAA-MM-DD.',
+        confirmText: 'Aceptar',
+        onConfirm: () => setDialog(prev => ({ ...prev, visible: false }))
+      });
+      return;
+    }
+    if (endStr && !/^\d{4}-\d{2}-\d{2}$/.test(endStr)) {
+      setDialog({
+        visible: true,
+        type: 'warning',
+        title: 'Fecha Inválida',
+        message: 'Por favor, ingresa la fecha de fin en formato AAAA-MM-DD.',
+        confirmText: 'Aceptar',
+        onConfirm: () => setDialog(prev => ({ ...prev, visible: false }))
+      });
+      return;
+    }
+
+    if (startStr) params.push(`start_date=${startStr}`);
+    if (endStr) params.push(`end_date=${endStr}`);
+    
+    if (params.length > 0) {
+      reportURL += `?${params.join('&')}`;
+    }
+
     if (Platform.OS === 'web') {
       window.open(reportURL, '_blank');
     } else {
       Linking.openURL(reportURL);
     }
+    setFilterModalVisible(false);
   };
 
   const handleDeleteReminder = (reminderId) => {
@@ -256,7 +369,17 @@ export default function VehicleHistoryScreen({ route, navigation }) {
               />
             )}
             <Text style={[styles.plateText, isMobile && styles.plateTextMobile]}>Ficha: {vehicle.plate}</Text>
-            <Text style={[styles.infoText, isMobile && styles.infoTextMobile]}>{vehicle.brand} {vehicle.model} ({vehicle.year}) • Kilometraje: {vehicle.current_mileage.toLocaleString()} km</Text>
+            <Text style={[styles.infoText, isMobile && styles.infoTextMobile, { marginTop: 4 }]}>
+              <Text style={{ color: '#0f172a', fontWeight: '800', fontSize: 15 }}>
+                {vehicle.brand} {vehicle.model} ({vehicle.year})
+              </Text>
+              {' • Kilometraje: '}{vehicle.current_mileage.toLocaleString()}{' km'}
+            </Text>
+            {vehicle.created_at && (
+              <Text style={[styles.infoText, isMobile && styles.infoTextMobile, { color: '#94a3b8', fontSize: 12, marginTop: 2 }]}>
+                Registrado el: {formatRegisterDate(vehicle.created_at)}
+              </Text>
+            )}
             
             <View style={styles.statusSection}>
               <Text style={styles.statusSectionLabel}>Estado del Vehículo:</Text>
@@ -311,14 +434,6 @@ export default function VehicleHistoryScreen({ route, navigation }) {
                 const isExpired = alert.alert_status === 'expired';
                 
                 let statusDetails = "";
-                if (alert.target_mileage) {
-                  const remaining = alert.target_mileage - vehicle.current_mileage;
-                  if (remaining <= 0) {
-                    statusDetails += `📍 Kilometraje objetivo (${alert.target_mileage.toLocaleString()} km) excedido por ${Math.abs(remaining).toLocaleString()} km. `;
-                  } else {
-                    statusDetails += `📍 Kilometraje objetivo (${alert.target_mileage.toLocaleString()} km): faltan ${remaining.toLocaleString()} km. `;
-                  }
-                }
                 if (alert.target_date) {
                   const today = new Date();
                   today.setHours(0, 0, 0, 0);
@@ -486,6 +601,134 @@ export default function VehicleHistoryScreen({ route, navigation }) {
         onClose={() => setDialog(prev => ({ ...prev, visible: false }))}
         autoDismissMs={dialog.autoDismissMs}
       />
+      <Modal
+        visible={filterModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setFilterModalVisible(false)}>
+          <Pressable style={[styles.sheetContainer, { paddingBottom: 30 }]} onPress={() => {}}>
+            <View style={styles.sheetHandle} />
+            <View>
+              <Text style={styles.sheetTitle}>Filtrar Reporte PDF</Text>
+              <Text style={styles.sheetSubtitle}>Selecciona un rango de fechas para filtrar los trabajos, o déjalo en blanco para descargar todo.</Text>
+              
+              <TouchableOpacity style={{ alignSelf: 'flex-end', marginBottom: 15 }} onPress={() => { setFilterStartDate(''); setFilterEndDate(''); }}>
+                <Text style={{ color: '#e52320', fontWeight: 'bold', fontSize: 13 }}>Limpiar Fechas</Text>
+              </TouchableOpacity>
+
+              <View style={{ marginBottom: 15 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginBottom: 6 }}>Fecha de Inicio</Text>
+                <TouchableOpacity activeOpacity={0.8} onPress={() => { setCalendarTarget('start'); setCalendarDate(new Date()); setShowCalendar(true); }}>
+                  <View pointerEvents="none">
+                    <TextInput
+                      style={{ height: 44, borderColor: '#cbd5e1', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: '#0f172a', backgroundColor: '#f8fafc' }}
+                      value={filterStartDate}
+                      placeholder="Seleccionar fecha..."
+                      placeholderTextColor="#94a3b8"
+                      editable={false}
+                    />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ marginBottom: 20 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569', marginBottom: 6 }}>Fecha de Fin</Text>
+                <TouchableOpacity activeOpacity={0.8} onPress={() => { setCalendarTarget('end'); setCalendarDate(new Date()); setShowCalendar(true); }}>
+                  <View pointerEvents="none">
+                    <TextInput
+                      style={{ height: 44, borderColor: '#cbd5e1', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: '#0f172a', backgroundColor: '#f8fafc' }}
+                      value={filterEndDate}
+                      placeholder="Seleccionar fecha..."
+                      placeholderTextColor="#94a3b8"
+                      editable={false}
+                    />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={styles.redActionBtn} onPress={confirmDownloadVehicleReport}>
+                <Text style={styles.redActionBtnText}>Generar Reporte PDF</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.sheetCancel, { marginTop: 10 }]} onPress={() => setFilterModalVisible(false)}>
+                <Text style={styles.sheetCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showCalendar}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCalendar(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowCalendar(false)}>
+          <Pressable style={styles.calendarContainer} onPress={() => {}}>
+            <View style={styles.calendarHeader}>
+              <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.navBtn}>
+                <Text style={styles.navBtnText}>◀</Text>
+              </TouchableOpacity>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.calendarTitle}>
+                  {months[calendarDate.getMonth()]} {calendarDate.getFullYear()}
+                </Text>
+                <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2, fontWeight: '600' }}>
+                  {getTodayString()}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => changeMonth(1)} style={styles.navBtn}>
+                <Text style={styles.navBtnText}>▶</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.weekRow}>
+              {weekDays.map(d => (
+                <Text key={d} style={styles.weekDayText}>{d}</Text>
+              ))}
+            </View>
+
+            <View style={styles.daysGrid}>
+              {getDaysGrid().map((day, idx) => {
+                const currentSelected = calendarTarget === 'start' ? filterStartDate : filterEndDate;
+                const isSelected = day && currentSelected === `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const today = new Date();
+                const isToday = day && 
+                                today.getDate() === day && 
+                                today.getMonth() === calendarDate.getMonth() && 
+                                today.getFullYear() === calendarDate.getFullYear();
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[
+                      styles.dayCell,
+                      isSelected && styles.selectedDayCell,
+                      isToday && !isSelected && { borderWidth: 1.5, borderColor: '#e52320', borderStyle: 'dashed' }
+                    ]}
+                    onPress={() => handleSelectDay(day)}
+                    disabled={!day}
+                  >
+                    <Text style={[
+                      styles.dayText,
+                      !day && styles.emptyDayText,
+                      isSelected && styles.selectedDayText
+                    ]}>
+                      {day || ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity style={styles.closeCalBtn} onPress={() => setShowCalendar(false)}>
+              <Text style={styles.closeCalBtnText}>Cerrar</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </AppLayout>
   );
 }
@@ -589,5 +832,21 @@ const styles = StyleSheet.create({
   blueActionBtn: { backgroundColor: '#1a73e8', paddingVertical: 12, paddingHorizontal: 15, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   blueActionBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
   dismissAlertBtn: { backgroundColor: '#fee2e2', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, borderWidth: 1, borderColor: '#fca5a5' },
-  dismissAlertBtnText: { color: '#dc2626', fontSize: 11, fontWeight: '700' }
+  dismissAlertBtnText: { color: '#dc2626', fontSize: 11, fontWeight: '700' },
+  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  navBtn: { padding: 10 },
+  navBtnText: { fontSize: 16, color: '#334155', fontWeight: 'bold' },
+  calendarTitle: { fontSize: 16, fontWeight: '800', color: '#1e293b' },
+  weekRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 8 },
+  weekDayText: { width: 36, textAlign: 'center', fontWeight: '700', color: '#94a3b8', fontSize: 12 },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
+  dayCell: { width: 42, height: 40, justifyContent: 'center', alignItems: 'center', marginVertical: 2, borderRadius: 8 },
+  selectedDayCell: { backgroundColor: '#e52320' },
+  dayText: { fontSize: 14, fontWeight: '600', color: '#334155' },
+  emptyDayText: { color: 'transparent' },
+  selectedDayText: { color: '#ffffff', fontWeight: '800' },
+  closeCalBtn: { marginTop: 15, backgroundColor: '#f1f5f9', height: 44, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  closeCalBtnText: { color: '#475569', fontSize: 14, fontWeight: '700' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  calendarContainer: { backgroundColor: '#ffffff', width: '100%', maxWidth: 340, borderRadius: 16, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 5 }
 });

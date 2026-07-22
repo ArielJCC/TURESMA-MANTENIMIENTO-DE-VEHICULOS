@@ -49,7 +49,7 @@ class VehicleController extends Controller
                         'model' => $reminder->vehicle->model,
                         'year' => $reminder->vehicle->year,
                         'current_mileage' => $reminder->vehicle->current_mileage,
-                        'image_url' => $reminder->vehicle->image ? secure_asset('storage/' . $reminder->vehicle->image) : null,
+                        'image_url' => $reminder->vehicle->image ? asset('storage/' . $reminder->vehicle->image) : null,
                         'action_status' => $status,
                     ];
                 } else {
@@ -73,7 +73,7 @@ class VehicleController extends Controller
     public function index()
     {
         $vehicles = Vehicle::all()->map(function ($vehicle) {
-            $vehicle->image_url = $vehicle->image ? secure_asset('storage/' . $vehicle->image) : null;
+            $vehicle->image_url = $vehicle->image ? asset('storage/' . $vehicle->image) : null;
             return $vehicle;
         });
 
@@ -121,7 +121,7 @@ class VehicleController extends Controller
     public function history($id)
     {
         $vehicle = Vehicle::findOrFail($id);
-        $vehicle->image_url = $vehicle->image ? secure_asset('storage/' . $vehicle->image) : null;
+        $vehicle->image_url = $vehicle->image ? asset('storage/' . $vehicle->image) : null;
 
         $maintenances = $vehicle->maintenances()->orderBy('date', 'desc')->get();
         $reminders = $vehicle->reminders()->get();
@@ -167,19 +167,52 @@ class VehicleController extends Controller
         ], 200);
     }
 
-    public function generateReport()
+    public function generateReport(Request $request)
     {
-        $vehicles = Vehicle::with('reminders', 'maintenances')->get();
+        $startDate = $request->query('start_date');
+        $endDate = $request->query('end_date');
+
+        $vehicles = Vehicle::with(['reminders', 'maintenances' => function($q) use ($startDate, $endDate) {
+            if ($startDate) {
+                $q->where('date', '>=', $startDate);
+            }
+            if ($endDate) {
+                $q->where('date', '<=', $endDate);
+            }
+        }])->get();
+
         $totalVehicles = $vehicles->count();
         $activeVehicles = $vehicles->where('status', 'active')->count();
         $workshopVehicles = $vehicles->where('status', 'workshop')->count();
 
-        $monthlyCosts = Maintenance::whereMonth('date', Carbon::now()->month)
-            ->whereYear('date', Carbon::now()->year)
-            ->sum('cost');
+        // Si hay rango de fechas, calcular gastos del rango. Si no, gasto del mes actual.
+        if ($startDate || $endDate) {
+            $costsQuery = Maintenance::query();
+            if ($startDate) {
+                $costsQuery->where('date', '>=', $startDate);
+            }
+            if ($endDate) {
+                $costsQuery->where('date', '<=', $endDate);
+            }
+            $monthlyCosts = $costsQuery->sum('cost');
+        } else {
+            $monthlyCosts = Maintenance::whereMonth('date', Carbon::now()->month)
+                ->whereYear('date', Carbon::now()->year)
+                ->sum('cost');
+        }
 
-        $recentActivity = Maintenance::with('vehicle:id,plate,brand,model')
-            ->orderBy('date', 'desc')->take(10)->get();
+        // Actividades recientes filtradas por el rango de fechas
+        $recentActivityQuery = Maintenance::with('vehicle:id,plate,brand,model')->orderBy('date', 'desc');
+        if ($startDate) {
+            $recentActivityQuery->where('date', '>=', $startDate);
+        }
+        if ($endDate) {
+            $recentActivityQuery->where('date', '<=', $endDate);
+        }
+        if (!$startDate && !$endDate) {
+            $recentActivityQuery->take(10);
+        }
+        $recentActivity = $recentActivityQuery->get();
 
         $reminders = Reminder::where('status', 'pending')->with('vehicle')->get();
         $expiredCount = 0; $upcomingCount = 0;
@@ -216,14 +249,25 @@ class VehicleController extends Controller
             'recentActivity',
             'expiredCount',
             'upcomingCount',
-            'generationDate'
+            'generationDate',
+            'startDate',
+            'endDate'
         ));
     }
 
-    public function generateVehicleReport($id)
+    public function generateVehicleReport(Request $request, $id)
     {
-        $vehicle = Vehicle::with(['maintenances' => function($q) {
+        $startDate = $request->query('start_date');
+        $endDate = $request->query('end_date');
+
+        $vehicle = Vehicle::with(['maintenances' => function($q) use ($startDate, $endDate) {
             $q->orderBy('date', 'desc');
+            if ($startDate) {
+                $q->where('date', '>=', $startDate);
+            }
+            if ($endDate) {
+                $q->where('date', '<=', $endDate);
+            }
         }, 'reminders'])->findOrFail($id);
 
         $totalSpent = $vehicle->maintenances->sum('cost');
@@ -238,7 +282,9 @@ class VehicleController extends Controller
             'vehicle',
             'totalSpent',
             'activeAlerts',
-            'generationDate'
+            'generationDate',
+            'startDate',
+            'endDate'
         ));
     }
 
@@ -264,21 +310,13 @@ class VehicleController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'target_date' => 'nullable|date',
-            'target_mileage' => 'nullable|integer|min:0',
+            'target_date' => 'required|date',
         ]);
-
-        if (empty($validated['target_date']) && empty($validated['target_mileage'])) {
-            return response()->json([
-                'errors' => ['target_date' => ['Debe proporcionar al menos una fecha límite o un kilometraje objetivo para el recordatorio.']]
-            ], 422);
-        }
 
         $reminder = $vehicle->reminders()->create([
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
-            'target_date' => $validated['target_date'] ?? null,
-            'target_mileage' => $validated['target_mileage'] ?? null,
+            'target_date' => $validated['target_date'],
             'status' => 'pending'
         ]);
 

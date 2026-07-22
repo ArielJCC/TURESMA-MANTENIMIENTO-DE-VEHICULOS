@@ -19,15 +19,8 @@ class Reminder extends Model
     {
         if ($this->status === 'done') return 'normal';
 
-        $vehicle = $this->vehicle;
         $isExpired = false;
         $isUpcoming = false;
-
-        if ($this->target_mileage) {
-            $remainingKm = $this->target_mileage - $vehicle->current_mileage;
-            if ($remainingKm <= 0) $isExpired = true;
-            elseif ($remainingKm <= 1000) $isUpcoming = true;
-        }
 
         if ($this->target_date) {
             $daysLeft = Carbon::now()->diffInDays(Carbon::parse($this->target_date), false);

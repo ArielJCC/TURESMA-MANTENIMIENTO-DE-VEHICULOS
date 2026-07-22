@@ -252,6 +252,11 @@
     <div class="report-title">
         <h2>Ficha de Historial y Mantenimientos</h2>
         <p>Reporte detallado de intervenciones mecánicas y alertas vigentes del vehículo</p>
+        @if((isset($startDate) && $startDate) || (isset($endDate) && $endDate))
+            <p style="font-weight: bold; color: #2563eb; margin-top: 5px; font-size: 13px;">
+                Período: {{ $startDate ?: 'Inicio' }} al {{ $endDate ?: 'Fin' }}
+            </p>
+        @endif
     </div>
 
     <div class="vehicle-summary-card">
@@ -279,11 +284,11 @@
                 <div class="summary-val">{{ number_format($vehicle->current_mileage) }} km</div>
             </div>
             <div class="summary-item">
-                <div class="summary-label">Inversión Total en Mantenimientos</div>
+                <div class="summary-label">{{ ((isset($startDate) && $startDate) || (isset($endDate) && $endDate)) ? 'Inversión en Período Filtrado' : 'Inversión Total en Mantenimientos' }}</div>
                 <div class="summary-val" style="color: #16a34a; font-size: 18px;">${{ number_format($totalSpent, 2) }}</div>
             </div>
             <div class="summary-item">
-                <div class="summary-label">Órdenes Registradas</div>
+                <div class="summary-label">{{ ((isset($startDate) && $startDate) || (isset($endDate) && $endDate)) ? 'Trabajos en Período' : 'Órdenes Registradas' }}</div>
                 <div class="summary-val">{{ $vehicle->maintenances->count() }} Trabajos</div>
             </div>
         </div>
@@ -295,14 +300,6 @@
             @php
                 $isExpired = $alert->alert_status === 'expired';
                 $statusText = "";
-                if ($alert->target_mileage) {
-                    $remaining = $alert->target_mileage - $vehicle->current_mileage;
-                    if ($remaining <= 0) {
-                        $statusText .= "Límite de " . number_format($alert->target_mileage) . " km excedido por " . number_format(abs($remaining)) . " km. ";
-                    } else {
-                        $statusText .= "Límite de " . number_format($alert->target_mileage) . " km (faltan " . number_format($remaining) . " km). ";
-                    }
-                }
                 if ($alert->target_date) {
                     $today = \Carbon\Carbon::today();
                     $limitDate = \Carbon\Carbon::parse($alert->target_date);
@@ -331,7 +328,7 @@
         @endforeach
     @endif
 
-    <div class="section-heading">Historial de Órdenes de Trabajo</div>
+    <div class="section-heading">{{ ((isset($startDate) && $startDate) || (isset($endDate) && $endDate)) ? 'Historial de Órdenes de Trabajo (Filtrado)' : 'Historial de Órdenes de Trabajo' }}</div>
     <table>
         <thead>
             <tr>

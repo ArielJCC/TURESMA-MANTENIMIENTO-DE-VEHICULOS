@@ -10,7 +10,6 @@ export default function AddReminderScreen({ route, navigation }) {
   const [form, setForm] = useState({
     title: '',
     description: '',
-    target_mileage: currentMileage !== undefined && currentMileage !== null ? String(currentMileage) : '',
     target_date: ''
   });
   const [submitting, setSubmitting] = useState(false);
@@ -56,6 +55,14 @@ export default function AddReminderScreen({ route, navigation }) {
     });
   };
 
+  const getTodayString = () => {
+    const today = new Date();
+    const day = today.getDate();
+    const month = months[today.getMonth()];
+    const year = today.getFullYear();
+    return `Hoy: ${day} de ${month} de ${year}`;
+  };
+
   const showDialog = (nextDialog) => {
     setDialog({ visible: true, type: 'info', title: '', message: '', autoDismissMs: null, onClose: null, ...nextDialog });
   };
@@ -63,23 +70,14 @@ export default function AddReminderScreen({ route, navigation }) {
   const handleSave = async () => {
     const titleStr = form.title ? String(form.title).trim() : '';
     const descriptionStr = form.description ? String(form.description).trim() : '';
-    const mileageStr = form.target_mileage ? String(form.target_mileage).trim() : '';
     const dateStr = form.target_date ? String(form.target_date).trim() : '';
 
     if (!titleStr) {
       return showDialog({ type: 'warning', title: 'Campo requerido', message: 'Por favor, ingresa un título para el recordatorio.' });
     }
 
-    if (!mileageStr && !dateStr) {
-      return showDialog({ type: 'warning', title: 'Criterio Requerido', message: 'Debes ingresar al menos un Kilometraje Objetivo o una Fecha Límite para activar el recordatorio.' });
-    }
-
-    let mileageNum = null;
-    if (mileageStr) {
-      mileageNum = parseInt(mileageStr, 10);
-      if (isNaN(mileageNum) || mileageNum <= 0 || !/^\d+$/.test(mileageStr)) {
-        return showDialog({ type: 'warning', title: 'Kilometraje Inválido', message: 'Por favor, ingresa un número de kilometraje válido y mayor a cero.' });
-      }
+    if (!dateStr) {
+      return showDialog({ type: 'warning', title: 'Fecha Requerida', message: 'Debes ingresar una Fecha Límite para activar el recordatorio.' });
     }
 
     if (dateStr && !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -91,8 +89,7 @@ export default function AddReminderScreen({ route, navigation }) {
       const payload = {
         title: titleStr,
         description: descriptionStr || null,
-        target_mileage: mileageNum,
-        target_date: dateStr || null
+        target_date: dateStr
       };
 
       await api.post(`/vehicles/${vehicleId}/reminders`, payload);
@@ -138,7 +135,7 @@ export default function AddReminderScreen({ route, navigation }) {
 
           <ScrollView style={[styles.scrollBody, isMobile && styles.scrollBodyMobile]} contentContainerStyle={styles.scrollContent}>
             <Text style={[styles.mainTitle, isMobile && styles.mainTitleMobile]}>Nuevo Recordatorio</Text>
-            <Text style={styles.subTitle}>Configura un recordatorio personalizado por kilometraje, fecha límite o ambos.</Text>
+            <Text style={styles.subTitle}>Configura un recordatorio personalizado por fecha límite.</Text>
 
             <View style={[styles.formContainer, isMobile && styles.formContainerMobile]}>
               <Text style={styles.label}>Título del Recordatorio</Text>
@@ -159,33 +156,18 @@ export default function AddReminderScreen({ route, navigation }) {
                 onChangeText={t => setForm({ ...form, description: t })} 
               />
 
-              <View style={styles.formRow}>
-                <View style={{ flex: 1, marginRight: 15 }}>
-                  <Text style={styles.label}>Kilometraje Objetivo</Text>
+              <Text style={styles.label}>Fecha Límite</Text>
+              <TouchableOpacity activeOpacity={0.8} onPress={() => setShowCalendar(true)}>
+                <View pointerEvents="none">
                   <TextInput 
                     style={[styles.input, isMobile && styles.inputMobile]} 
-                    value={form.target_mileage} 
-                    placeholder="Ej: 55000" 
+                    value={form.target_date} 
+                    placeholder="Seleccionar..." 
                     placeholderTextColor="#94a3b8" 
-                    keyboardType="numeric" 
-                    onChangeText={t => setForm({ ...form, target_mileage: t })} 
+                    editable={false}
                   />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Fecha Límite</Text>
-                  <TouchableOpacity activeOpacity={0.8} onPress={() => setShowCalendar(true)}>
-                    <View pointerEvents="none">
-                      <TextInput 
-                        style={[styles.input, isMobile && styles.inputMobile]} 
-                        value={form.target_date} 
-                        placeholder="Seleccionar..." 
-                        placeholderTextColor="#94a3b8" 
-                        editable={false}
-                      />
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              </TouchableOpacity>
 
               <View style={styles.btnActionContainer}>
                 <TouchableOpacity style={[styles.btn, submitting && { backgroundColor: '#a0aec0' }]} onPress={handleSave} disabled={submitting}>
@@ -208,9 +190,14 @@ export default function AddReminderScreen({ route, navigation }) {
                 <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.navBtn}>
                   <Text style={styles.navBtnText}>◀</Text>
                 </TouchableOpacity>
-                <Text style={styles.calendarTitle}>
-                  {months[calendarDate.getMonth()]} {calendarDate.getFullYear()}
-                </Text>
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={styles.calendarTitle}>
+                    {months[calendarDate.getMonth()]} {calendarDate.getFullYear()}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2, fontWeight: '600' }}>
+                    {getTodayString()}
+                  </Text>
+                </View>
                 <TouchableOpacity onPress={() => changeMonth(1)} style={styles.navBtn}>
                   <Text style={styles.navBtnText}>▶</Text>
                 </TouchableOpacity>
@@ -223,25 +210,34 @@ export default function AddReminderScreen({ route, navigation }) {
               </View>
 
               <View style={styles.daysGrid}>
-                {getDaysGrid().map((day, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={[
-                      styles.dayCell,
-                      day && form.target_date === `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` && styles.selectedDayCell
-                    ]}
-                    onPress={() => handleSelectDay(day)}
-                    disabled={!day}
-                  >
-                    <Text style={[
-                      styles.dayText,
-                      !day && styles.emptyDayText,
-                      day && form.target_date === `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` && styles.selectedDayText
-                    ]}>
-                      {day || ''}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {getDaysGrid().map((day, idx) => {
+                  const isSelected = day && form.target_date === `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  const today = new Date();
+                  const isToday = day && 
+                                  today.getDate() === day && 
+                                  today.getMonth() === calendarDate.getMonth() && 
+                                  today.getFullYear() === calendarDate.getFullYear();
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[
+                        styles.dayCell,
+                        isSelected && styles.selectedDayCell,
+                        isToday && !isSelected && { borderWidth: 1.5, borderColor: '#e52320', borderStyle: 'dashed' }
+                      ]}
+                      onPress={() => handleSelectDay(day)}
+                      disabled={!day}
+                    >
+                      <Text style={[
+                        styles.dayText,
+                        !day && styles.emptyDayText,
+                        isSelected && styles.selectedDayText
+                      ]}>
+                        {day || ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <TouchableOpacity style={styles.closeCalBtn} onPress={() => setShowCalendar(false)}>

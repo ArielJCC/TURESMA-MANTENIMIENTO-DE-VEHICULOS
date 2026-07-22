@@ -233,6 +233,11 @@
     <div class="report-title">
         <h2>Reporte Consolidado de Operaciones</h2>
         <p>Resumen administrativo del estado mecánico e inversión de la flota activa</p>
+        @if((isset($startDate) && $startDate) || (isset($endDate) && $endDate))
+            <p style="font-weight: bold; color: #2563eb; margin-top: 5px; font-size: 13px;">
+                Período: {{ $startDate ?: 'Inicio' }} al {{ $endDate ?: 'Fin' }}
+            </p>
+        @endif
     </div>
 
     <div class="metrics-grid">
@@ -242,9 +247,9 @@
             <div style="font-size: 10px; color: #64748b; margin-top: 5px;">{{ $activeVehicles }} Activos / {{ $workshopVehicles }} en Taller</div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">Inversión del Mes</div>
+            <div class="metric-label">{{ ((isset($startDate) && $startDate) || (isset($endDate) && $endDate)) ? 'Inversión del Período' : 'Inversión del Mes' }}</div>
             <div class="metric-value">${{ number_format($monthlyCosts, 2) }}</div>
-            <div style="font-size: 10px; color: #64748b; margin-top: 5px;">Mes actual</div>
+            <div style="font-size: 10px; color: #64748b; margin-top: 5px;">{{ ((isset($startDate) && $startDate) || (isset($endDate) && $endDate)) ? 'Rango filtrado' : 'Mes actual' }}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Alertas Próximas</div>
@@ -302,7 +307,7 @@
         </tbody>
     </table>
 
-    <div class="section-heading">Historial de Mantenimientos Recientes</div>
+    <div class="section-heading">{{ ((isset($startDate) && $startDate) || (isset($endDate) && $endDate)) ? 'Historial de Mantenimientos del Período' : 'Historial de Mantenimientos Recientes' }}</div>
     <table>
         <thead>
             <tr>
